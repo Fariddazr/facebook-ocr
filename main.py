@@ -10,8 +10,18 @@ with sync_playwright() as p:
 
     page.goto(URL, wait_until="networkidle")
 
-    print("Titre :", page.title())
+    page.wait_for_timeout(5000)
 
-    print("URL finale :", page.url)
+    images = page.locator("img").all()
+
+    print(f"Nombre d'images trouvées : {len(images)}")
+
+    for i, img in enumerate(images):
+
+        src = img.get_attribute("src")
+
+        if src:
+            print(f"\nIMAGE {i+1}")
+            print(src)
 
     browser.close()
