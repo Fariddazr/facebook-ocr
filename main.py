@@ -37,23 +37,18 @@ with sync_playwright() as p:
             filename = f"images/image_{compteur}.jpg"
 
             try:
-
                 response = requests.get(src, timeout=30)
+                response.raise_for_status()
 
                 with open(filename, "wb") as f:
                     f.write(response.content)
 
-                texte = ""
+                print(f"Image téléchargée : {filename} ({response.status_code}, {response.headers.get('Content-Type')})")
 
-                try:
-                    result = reader.readtext(filename)
+                result = reader.readtext(filename)
+                texte = " ".join(item[1] for item in result)
 
-                    texte = " ".join(
-                        [item[1] for item in result]
-                    )
-
-                except:
-                    texte = ""
+                print(f"Texte détecté : {texte!r}")
 
                 data.append({
                     "image": filename,
@@ -61,7 +56,7 @@ with sync_playwright() as p:
                 })
 
             except Exception as e:
-                print(e)
+                print(f"Erreur pour {src}: {e}")
 
     browser.close()
 
