@@ -1,5 +1,7 @@
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
+import easyocr
 import pandas as pd
 import requests
 import torch
@@ -9,19 +11,20 @@ from transformers import BlipForConditionalGeneration, BlipProcessor
 
 URL = "https://www.facebook.com/ggerendi"
 MAX_PHOTOS = 50
+MAX_SCROLLS = 80
+NO_GROWTH_LIMIT = 6
+SCROLL_WAIT_MS = 1500
 IMAGE_DIR = Path("images")
 MODEL_NAME = "Salesforce/blip-image-captioning-base"
 
 IMAGE_DIR.mkdir(exist_ok=True)
 
-# Modèle open source exécuté localement : aucun appel à une API payante.
 device = "cuda" if torch.cuda.is_available() else "cpu"
 processor = BlipProcessor.from_pretrained(MODEL_NAME)
 model = BlipForConditionalGeneration.from_pretrained(MODEL_NAME).to(device)
 
 
 def describe_image(filename: Path) -> str:
-    """Génère une courte description de l'image avec BLIP."""
     image = Image.open(filename).convert("RGB")
     inputs = processor(images=image, return_tensors="pt").to(device)
     with torch.inference_mode():
@@ -29,26 +32,55 @@ def describe_image(filename: Path) -> str:
     return processor.decode(output[0], skip_special_tokens=True).strip()
 
 
-reader = __import__("easyocr").Reader(["fr"])
+def image_key(src: str) -> str:
+    parts = urlsplit(src)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def collect_image_urls(page) -> list[str]:
+    urls_by_key = {}
+    no_growth_rounds = 0
+
+    for _ in range(MAX_SCROLLS):
+        visible_urls = page.locator("img").evaluate_all(
+            "imgs => imgs.map(img => img.currentSrc || img.src)"
+        )
+        old_count = len(urls_by_key)
+
+        for src in visible_urls:
+            if src and "scontent" in src:
+                urls_by_key.setdefault(image_key(src), src)
+                if len(urls_by_key) >= MAX_PHOTOS:
+                    break
+
+        if len(urls_by_key) >= MAX_PHOTOS:
+            break
+
+        if len(urls_by_key) == old_count:
+            no_growth_rounds += 1
+        else:
+            no_growth_rounds = 0
+
+        if no_growth_rounds >= NO_GROWTH_LIMIT:
+            break
+
+        page.evaluate("window.scrollBy(0, Math.max(window.innerHeight * 0.8, 600))")
+        page.wait_for_timeout(SCROLL_WAIT_MS)
+
+    return list(urls_by_key.values())[:MAX_PHOTOS]
+
+
+reader = easyocr.Reader(["fr"])
 data = []
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.goto(URL, wait_until="domcontentloaded")
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    page.goto(URL, wait_until="domcontentloaded", timeout=60000)
     page.wait_for_timeout(5000)
 
-    # La page de profil affiche normalement les publications dans l'ordre
-    # antéchronologique. On déduplique les URL et garde les 50 premières.
-    image_urls = []
-    seen_urls = set()
-    for img in page.locator("img").all():
-        src = img.get_attribute("src")
-        if src and "scontent" in src and src not in seen_urls:
-            image_urls.append(src)
-            seen_urls.add(src)
-            if len(image_urls) == MAX_PHOTOS:
-                break
+    image_urls = collect_image_urls(page)
+    print(f"{len(image_urls)} URL(s) d'image trouvée(s) après défilement.")
 
     for index, src in enumerate(image_urls, start=1):
         filename = IMAGE_DIR / f"image_{index:02d}.jpg"
