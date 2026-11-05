@@ -19,3 +19,9 @@ jobs:
       - run: playwright install --with-deps chromium
 
       - run: python main.py
+
+      - name: Upload images
+        uses: actions/upload-artifact@v4
+        with:
+          name: facebook-images
+          path: images/
