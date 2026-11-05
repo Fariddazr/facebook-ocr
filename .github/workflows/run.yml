@@ -24,4 +24,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: facebook-images
-          path: images/
+          path: |
+            images/
+            resultats.csv
