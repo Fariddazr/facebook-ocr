@@ -1,6 +1,10 @@
 from playwright.sync_api import sync_playwright
+import requests
+import os
 
 URL = "https://www.facebook.com/ggerendi"
+
+os.makedirs("images", exist_ok=True)
 
 with sync_playwright() as p:
 
@@ -14,14 +18,32 @@ with sync_playwright() as p:
 
     images = page.locator("img").all()
 
-    print(f"Nombre d'images trouvées : {len(images)}")
+    compteur = 0
 
-    for i, img in enumerate(images):
+    for img in images:
 
         src = img.get_attribute("src")
 
-        if src:
-            print(f"\nIMAGE {i+1}")
-            print(src)
+        if src and "scontent" in src:
+
+            compteur += 1
+
+            print(f"Téléchargement image {compteur}")
+
+            try:
+
+                response = requests.get(src, timeout=30)
+
+                with open(
+                    f"images/image_{compteur}.jpg",
+                    "wb"
+                ) as f:
+
+                    f.write(response.content)
+
+            except Exception as e:
+                print(e)
 
     browser.close()
+
+print(f"Images téléchargées : {compteur}")
