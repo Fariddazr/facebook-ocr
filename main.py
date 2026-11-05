@@ -1,10 +1,16 @@
 from playwright.sync_api import sync_playwright
 import requests
 import os
+import pandas as pd
+import easyocr
 
 URL = "https://www.facebook.com/ggerendi"
 
 os.makedirs("images", exist_ok=True)
+
+reader = easyocr.Reader(['fr'])
+
+data = []
 
 with sync_playwright() as p:
 
@@ -28,22 +34,40 @@ with sync_playwright() as p:
 
             compteur += 1
 
-            print(f"Téléchargement image {compteur}")
+            filename = f"images/image_{compteur}.jpg"
 
             try:
 
                 response = requests.get(src, timeout=30)
 
-                with open(
-                    f"images/image_{compteur}.jpg",
-                    "wb"
-                ) as f:
-
+                with open(filename, "wb") as f:
                     f.write(response.content)
+
+                texte = ""
+
+                try:
+                    result = reader.readtext(filename)
+
+                    texte = " ".join(
+                        [item[1] for item in result]
+                    )
+
+                except:
+                    texte = ""
+
+                data.append({
+                    "image": filename,
+                    "texte": texte
+                })
 
             except Exception as e:
                 print(e)
 
     browser.close()
 
-print(f"Images téléchargées : {compteur}")
+pd.DataFrame(data).to_csv(
+    "resultats.csv",
+    index=False
+)
+
+print("CSV généré")
