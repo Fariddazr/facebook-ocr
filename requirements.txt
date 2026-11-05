@@ -1,4 +1,5 @@
 playwright
-easyocr
 requests
 pillow
+easyocr
+pandas
